@@ -22,6 +22,14 @@ const getHiveHistory = asyncHandler(async (req, res) => {
   });
 });
 
+const getAllInspections = asyncHandler(async (req, res) => {
+  const inspections = await inspectionService.getAllInspections();
+  res.status(200).json({
+    success: true,
+    data: inspections
+  });
+});
+
 const syncInspections = asyncHandler(async (req, res) => {
   const payload = Array.isArray(req.body) ? req.body : req.body.inspections;
   const syncResult = await inspectionService.syncInspections(payload, req.user._id);
@@ -35,5 +43,6 @@ const syncInspections = asyncHandler(async (req, res) => {
 module.exports = {
   createInspection,
   getHiveHistory,
+  getAllInspections,
   syncInspections
 };
