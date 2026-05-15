@@ -10,6 +10,7 @@ const router = express.Router();
 
 router.use(auth);
 
+router.get("/", allowRoles("admin"), inspectionController.getAllInspections);
 router.post("/", allowRoles("admin", "beekeeper"), validate(createInspectionSchema), inspectionController.createInspection);
 router.get(
   "/hive/:hiveId",
