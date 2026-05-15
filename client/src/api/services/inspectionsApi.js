@@ -19,7 +19,6 @@ function normalizeQueueItem(item) {
     return null
   }
 
-  // Legacy client payloads cannot be mapped safely (no hive_id), so skip them.
   if (!item.hive_id) {
     return null
   }
@@ -43,27 +42,14 @@ function normalizeQueueItem(item) {
 
 export function getOfflineInspections() {
   const rawValue = localStorage.getItem(OFFLINE_INSPECTIONS_KEY)
-
-  if (!rawValue) {
-    return []
-  }
-
+  if (!rawValue) return []
   try {
     const parsed = JSON.parse(rawValue)
-    if (!Array.isArray(parsed)) {
-      return []
-    }
-
+    if (!Array.isArray(parsed)) return []
     const normalized = parsed.map(normalizeQueueItem).filter(Boolean)
-
-    if (normalized.length !== parsed.length) {
-      saveOfflineInspections(normalized)
-    }
-
+    if (normalized.length !== parsed.length) saveOfflineInspections(normalized)
     return normalized
-  } catch {
-    return []
-  }
+  } catch { return [] }
 }
 
 export function saveOfflineInspections(inspections) {
@@ -76,10 +62,7 @@ export function clearOfflineInspections() {
 
 export function enqueueOfflineInspection(inspection) {
   const normalized = normalizeQueueItem(inspection)
-  if (!normalized) {
-    return getOfflineInspections()
-  }
-
+  if (!normalized) return getOfflineInspections()
   const current = getOfflineInspections()
   const nextQueue = [...current, normalized]
   saveOfflineInspections(nextQueue)
@@ -87,39 +70,30 @@ export function enqueueOfflineInspection(inspection) {
 }
 
 export async function syncInspectionBatch(inspections) {
-  if (!inspections.length) {
-    return { syncedCount: 0, duplicatesCount: 0, failedCount: 0 }
-  }
-
+  if (!inspections.length) return { syncedCount: 0, duplicatesCount: 0, failedCount: 0 }
   const response = await axiosClient.post('/inspections/sync', inspections)
-
   return response.data
 }
 
 export async function syncOfflineInspections() {
   const queue = getOfflineInspections()
-
-  if (!queue.length) {
-    return { syncedCount: 0, queueSize: 0 }
-  }
-
+  if (!queue.length) return { syncedCount: 0, queueSize: 0 }
   const response = await syncInspectionBatch(queue)
   const failedItems = response?.data?.errors ?? []
-  const failedIds = new Set(
-    failedItems
-      .map((item) => item.client_inspection_id)
-      .filter(Boolean),
-  )
-
+  const failedIds = new Set(failedItems.map((item) => item.client_inspection_id).filter(Boolean))
   const nextQueue = queue.filter((item) => failedIds.has(item.client_inspection_id))
   saveOfflineInspections(nextQueue)
-
   return {
     syncedCount: response?.data?.saved ?? 0,
     duplicatesCount: response?.data?.duplicates ?? 0,
     failedCount: response?.data?.failed ?? 0,
     queueSize: nextQueue.length,
   }
+}
+
+export async function getAllInspections() {
+  const response = await axiosClient.get('/inspections')
+  return response.data.data ?? []
 }
 
 export async function getHiveInspectionHistory(hiveId) {
