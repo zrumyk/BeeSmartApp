@@ -12,7 +12,7 @@ async function connectToDatabase() {
   }
 
   await mongoose.connect(mongoUri, {
-    dbName: process.env.MONGO_DB_NAME || "beesmart"
+    dbName: process.env.MONGO_DB_NAME
   });
 }
 
@@ -33,7 +33,6 @@ async function clearCollections() {
     VetTask.deleteMany({})
   ]);
 
-  // eslint-disable-next-line no-console
   console.log("Collections cleared: User, Location, Hive, Inspection, IoTWeight, VetTask");
 }
 
@@ -74,7 +73,6 @@ async function seedUsers() {
     }
   ]);
 
-  // eslint-disable-next-line no-console
   console.log(`Users created: ${users.length}`);
   return users;
 }
@@ -111,7 +109,6 @@ async function seedLocations() {
     }
   ]);
 
-  // eslint-disable-next-line no-console
   console.log(`Locations created: ${locations.length}`);
   return locations;
 }
@@ -219,7 +216,6 @@ async function seedHives(locations) {
   ];
 
   const hives = await Hive.insertMany(hivesPayload);
-  // eslint-disable-next-line no-console
   console.log(`Hives created: ${hives.length}`);
   return hives;
 }
@@ -247,7 +243,6 @@ async function seedInspections(hives, beekeepers) {
 
   const inspections = await Inspection.insertMany(inspectionsPayload);
 
-  // eslint-disable-next-line no-console
   console.log(`Inspections created: ${inspections.length}`);
   return inspections;
 }
@@ -268,7 +263,6 @@ async function seedIoTWeights(hives) {
 
   const weights = await IoTWeight.insertMany(payload);
 
-  // eslint-disable-next-line no-console
   console.log(`IoT weights created: ${weights.length}`);
   return weights;
 }
@@ -298,7 +292,6 @@ async function seedVetTasks(hives, beekeepers) {
 
   const tasks = await VetTask.insertMany(payload);
 
-  // eslint-disable-next-line no-console
   console.log(`Vet tasks created: ${tasks.length}`);
   return tasks;
 }
@@ -306,7 +299,6 @@ async function seedVetTasks(hives, beekeepers) {
 async function runSeed() {
   try {
     await connectToDatabase();
-    // eslint-disable-next-line no-console
     console.log("MongoDB connected for seeding");
 
     await clearCollections();
@@ -319,12 +311,10 @@ async function runSeed() {
     await seedIoTWeights(hives);
     await seedVetTasks(hives, beekeepers);
 
-    // eslint-disable-next-line no-console
     console.log("Seeding completed successfully");
     await mongoose.connection.close();
     process.exit(0);
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error("Seeding failed:", error);
     await mongoose.connection.close();
     process.exit(1);

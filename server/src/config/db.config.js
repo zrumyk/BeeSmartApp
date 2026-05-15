@@ -12,10 +12,8 @@ const connectDB = async () => {
       dbName: process.env.MONGO_DB_NAME || "beesmart"
     });
 
-    // eslint-disable-next-line no-console
     console.log("MongoDB connected successfully");
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error("MongoDB connection failed:", error.message);
     process.exit(1);
   }
