@@ -31,7 +31,6 @@ function AdminLocationsPage() {
   const handleCreate = async (e) => {
     e.preventDefault()
     
-    // Перетворюємо плоскі поля в структуру, яку очікує модель Location.js
     const payload = {
       name: newLocation.name,
       region: newLocation.region,
