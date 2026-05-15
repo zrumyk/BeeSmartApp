@@ -14,3 +14,13 @@ export async function getHiveByQrCode(qrCode) {
   const response = await axiosClient.get(`/hives/qr/${encodeURIComponent(qrCode)}`)
   return response.data.data
 }
+
+export async function createHive(payload) {
+  const response = await axiosClient.post('/hives', payload)
+  return response.data.data
+}
+
+export async function getHiveProductivity(id) {
+  const response = await axiosClient.get(`/hives/${id}/productivity`)
+  return response.data.data
+}
