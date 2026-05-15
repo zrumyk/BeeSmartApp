@@ -14,3 +14,8 @@ export async function createVetTask(payload) {
   const response = await axiosClient.post('/vet-tasks', payload)
   return response.data.data
 }
+
+export async function completeVetTask(id) {
+  const response = await axiosClient.patch(`/vet-tasks/${id}/complete`)
+  return response.data.data
+}
