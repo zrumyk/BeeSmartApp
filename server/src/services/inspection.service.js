@@ -27,13 +27,17 @@ const getHiveInspectionHistory = async (hiveId) =>
     .populate("user_id", "name email role")
     .sort({ date: -1, createdAt: -1 });
 
+const getAllInspections = async () =>
+  Inspection.find()
+    .populate("hive_id", "qr_code")
+    .populate("user_id", "name email")
+    .sort({ date: -1 });
+
 const syncInspections = async (items, userId) => {
   const created = [];
   const failed = [];
   const duplicates = [];
 
-  // Sequential insert keeps per-item status deterministic for offline sync.
-  // eslint-disable-next-line no-restricted-syntax
   for (const item of items) {
     try {
       const record = await createInspection({ ...item, userId });
@@ -71,5 +75,6 @@ const syncInspections = async (items, userId) => {
 module.exports = {
   createInspection,
   getHiveInspectionHistory,
+  getAllInspections,
   syncInspections
 };
