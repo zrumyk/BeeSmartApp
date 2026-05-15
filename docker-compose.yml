@@ -12,7 +12,6 @@ services:
   backend:
     build: ./server
     container_name: beesmart_backend
-    command: sh -c "node seed.js && node server.js"
     ports:
       - "5000:5000"
     environment:
