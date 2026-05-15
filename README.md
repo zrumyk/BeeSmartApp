@@ -60,7 +60,7 @@
 ---
 
 ## 🗄 Міграції та База даних
-- 
+
 Для наповнення бази данних запустіть команду
    ```bash
    docker exec -it beesmart_backend node seed.js
