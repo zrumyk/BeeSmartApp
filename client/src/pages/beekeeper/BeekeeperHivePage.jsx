@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getHiveByQrCode } from '../../api/services/hivesApi'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { getHiveByQrCode, getHiveProductivity } from '../../api/services/hivesApi'
+import { getHiveYield } from '../../api/services/iotApi'
 import {
   enqueueOfflineInspection,
   syncOfflineInspections,
@@ -13,8 +15,11 @@ function BeekeeperHivePage() {
   const { qrCode } = useParams()
   const isOnline = useNetworkStore((state) => state.isOnline)
   const refreshUnsyncedCount = useSyncQueueStore((state) => state.refreshUnsyncedCount)
+  
   const [hive, setHive] = useState(null)
-  const [isLoadingHive, setIsLoadingHive] = useState(true)
+  const [productivity, setProductivity] = useState(null)
+  const [yieldData, setYieldData] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const [framesCount, setFramesCount] = useState('10')
   const [honeyFramesCount, setHoneyFramesCount] = useState('4')
@@ -22,33 +27,37 @@ function BeekeeperHivePage() {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    const fetchHive = async () => {
-      setIsLoadingHive(true)
+    const fetchAllData = async () => {
+      setIsLoading(true)
       try {
-        const data = await getHiveByQrCode(qrCode)
-        setHive(data)
-      } catch {
-        toast.error('Вулик за QR не знайдено')
+        const hiveData = await getHiveByQrCode(qrCode)
+        setHive(hiveData)
+
+        if (hiveData?._id && isOnline) {
+          const [prod, yld] = await Promise.all([
+            getHiveProductivity(hiveData._id),
+            getHiveYield(hiveData._id)
+          ])
+          setProductivity(prod)
+          setYieldData(yld)
+        }
+      } catch (err) {
+        toast.error('Дані вулика не знайдено')
       } finally {
-        setIsLoadingHive(false)
+        setIsLoading(false)
       }
     }
 
-    fetchHive()
-  }, [qrCode])
+    fetchAllData()
+  }, [qrCode, isOnline])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-
-    if (!hive?._id) {
-      toast.error('Неможливо зберегти огляд: вулик не знайдено')
-      return
-    }
+    if (!hive?._id) return
 
     setIsSaving(true)
-
     const inspection = {
-      hive_id: hive?._id,
+      hive_id: hive._id,
       date: new Date().toISOString(),
       details: {
         brood_frames: Number(framesCount),
@@ -58,99 +67,89 @@ function BeekeeperHivePage() {
       },
     }
 
-    if (!isOnline) {
-      enqueueOfflineInspection(inspection)
-      refreshUnsyncedCount()
-      toast.success('Збережено локально')
-      setIsSaving(false)
-      return
-    }
-
     try {
       enqueueOfflineInspection(inspection)
-      const result = await syncOfflineInspections()
+      if (isOnline) {
+        await syncOfflineInspections()
+        toast.success('Огляд збережено та синхронізовано')
+      } else {
+        toast.success('Збережено локально (офлайн)')
+      }
       refreshUnsyncedCount()
-      if ((result?.syncedCount ?? 0) > 0 || (result?.duplicatesCount ?? 0) > 0) {
-        toast.success('Огляд синхронізовано')
-      }
-      if ((result?.failedCount ?? 0) > 0) {
-        toast.error('Частину записів не вдалося синхронізувати')
-      }
     } catch {
-      refreshUnsyncedCount()
-      toast.error('Мережа нестабільна: збережено локально')
+      toast.error('Помилка синхронізації')
     } finally {
       setIsSaving(false)
     }
   }
 
-  if (isLoadingHive) {
-    return (
-      <section className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center bg-black p-4 pb-24">
-        <p className="text-base font-semibold text-zinc-200">Завантаження вулика...</p>
-      </section>
-    )
-  }
-
-  if (!hive) {
-    return (
-      <section className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 bg-black p-4 pb-24 text-center">
-        <h1 className="text-2xl font-black text-yellow-300">Картка вулика</h1>
-        <p className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-200">
-          Тут поки що порожньо
-        </p>
-      </section>
-    )
-  }
+  if (isLoading) return <section className="flex min-h-screen items-center justify-center bg-black text-white">Завантаження...</section>
+  if (!hive) return <section className="p-10 text-center bg-black text-white">Вулик не знайдено</section>
 
   return (
-    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-black p-4 pb-24">
-      <h1 className="text-2xl font-black text-yellow-300">Картка вулика</h1>
-      <p className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-        QR: {hive.qr_code ?? qrCode}
-      </p>
+    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-6 bg-black p-4 pb-24">
+      <header className="flex justify-between items-end">
+        <div>
+          <h1 className="text-2xl font-black text-yellow-300">Вулик {hive.qr_code}</h1>
+          <p className="text-zinc-500 text-xs uppercase font-bold">{hive.type} • {hive.status}</p>
+        </div>
+        {productivity && (
+          <div className="bg-yellow-300 text-black px-3 py-1 rounded-full font-black text-sm">
+             Ефективність: {productivity}/10
+          </div>
+        )}
+      </header>
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <label className="block">
-          <span className="mb-2 block text-sm font-semibold text-zinc-300">Кількість рамок</span>
-          <input
-            className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-lg outline-none focus:border-yellow-300"
-            min="0"
-            type="number"
-            value={framesCount}
-            onChange={(event) => setFramesCount(event.target.value)}
-            required
-          />
-        </label>
+      {isOnline && yieldData.length > 0 && (
+        <div className="h-48 w-full rounded-2xl bg-zinc-900/50 border border-zinc-800 p-4">
+          <h2 className="text-xs font-bold text-zinc-400 uppercase mb-4">Динаміка ваги (кг)</h2>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={yieldData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+              <XAxis dataKey="date" hide />
+              <YAxis hide domain={['auto', 'auto']} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px' }}
+                itemStyle={{ color: '#fde047' }}
+              />
+              <Line type="monotone" dataKey="weight" stroke="#fde047" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
+      <form className="space-y-4 rounded-2xl bg-zinc-900/30 border border-zinc-800 p-5" onSubmit={handleSubmit}>
+        <h2 className="text-sm font-bold text-yellow-300 uppercase">Новий огляд</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-zinc-500 uppercase">Рамки</span>
+            <input
+              className="h-12 w-full rounded-xl bg-zinc-900 border border-zinc-700 text-white px-4 outline-none focus:border-yellow-300"
+              type="number" value={framesCount} onChange={e => setFramesCount(e.target.value)} required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-zinc-500 uppercase">Мед (рамки)</span>
+            <input
+              className="h-12 w-full rounded-xl bg-zinc-900 border border-zinc-700 text-white px-4 outline-none focus:border-yellow-300"
+              type="number" value={honeyFramesCount} onChange={e => setHoneyFramesCount(e.target.value)} required
+            />
+          </label>
+        </div>
         <label className="block">
-          <span className="mb-2 block text-sm font-semibold text-zinc-300">Медові рамки</span>
-          <input
-            className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-lg outline-none focus:border-yellow-300"
-            min="0"
-            type="number"
-            value={honeyFramesCount}
-            onChange={(event) => setHoneyFramesCount(event.target.value)}
-            required
-          />
-        </label>
-
-        <label className="block">
-          <span className="mb-2 block text-sm font-semibold text-zinc-300">Хвороби / примітки</span>
+          <span className="mb-1 block text-xs font-bold text-zinc-500 uppercase">Примітки</span>
           <textarea
-            className="min-h-24 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base outline-none focus:border-yellow-300"
-            value={diseases}
-            onChange={(event) => setDiseases(event.target.value)}
-            placeholder="Опишіть симптоми або залиште порожнім"
+            className="min-h-20 w-full rounded-xl bg-zinc-900 border border-zinc-700 text-white px-4 py-3 outline-none focus:border-yellow-300"
+            value={diseases} onChange={e => setDiseases(e.target.value)}
+            placeholder="Стан матки, поведінка..."
           />
         </label>
 
         <button
-          className="h-14 w-full rounded-2xl border-2 border-yellow-300 bg-yellow-300 text-lg font-black text-black disabled:opacity-60"
-          disabled={isSaving}
-          type="submit"
+          className="h-14 w-full rounded-2xl bg-yellow-300 text-lg font-black text-black transition active:scale-95 disabled:opacity-50"
+          disabled={isSaving} type="submit"
         >
-          {isSaving ? 'Збереження...' : 'Зберегти огляд'}
+          {isSaving ? 'Збереження...' : 'ЗБЕРЕГТИ ДАНІ'}
         </button>
       </form>
     </section>
