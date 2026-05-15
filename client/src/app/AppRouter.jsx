@@ -6,6 +6,7 @@ import AdminLayout from '../components/layout/AdminLayout'
 import ShellLayout from '../components/layout/ShellLayout'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage'
 import AdminHivesPage from '../pages/admin/AdminHivesPage'
+import AdminLocationsPage from '../pages/admin/AdminLocationsPage'
 import AdminTasksPage from '../pages/admin/AdminTasksPage'
 import BeekeeperHomePage from '../pages/beekeeper/BeekeeperHomePage'
 import BeekeeperHivePage from '../pages/beekeeper/BeekeeperHivePage'
@@ -33,6 +34,7 @@ function AppRouter() {
       <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/locations" element={<AdminLocationsPage />} />
           <Route path="/admin/hives" element={<AdminHivesPage />} />
           <Route path="/admin/tasks" element={<AdminTasksPage />} />
         </Route>
