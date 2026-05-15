@@ -1,97 +1,137 @@
 /**
  * @swagger
- * /api/locations:
- *   get:
- *     tags: [Locations]
- *     summary: Get all locations
- *   post:
- *     tags: [Locations]
- *     summary: Create location (admin)
- *
- * /api/locations/{id}:
- *   get:
- *     tags: [Locations]
- *     summary: Get location by ID
- *   put:
- *     tags: [Locations]
- *     summary: Update location (admin)
- *   delete:
- *     tags: [Locations]
- *     summary: Delete location (admin)
- *
+ * components:
+ *   schemas:
+ *     Location:
+ *       type: object
+ *       required: [name, region, coordinates, max_capacity]
+ *       properties:
+ *         name: { type: string, example: "Forest Apiary" }
+ *         region: { type: string, example: "Lviv Region" }
+ *         coordinates:
+ *           type: object
+ *           properties:
+ *             lat: { type: number, example: 49.8397 }
+ *             lng: { type: number, example: 24.0297 }
+ *         max_capacity: { type: number, example: 100 }
+ *     Hive:
+ *       type: object
+ *       required: [qr_code, location_id, type, installed_at]
+ *       properties:
+ *         qr_code: { type: string, example: "H-001" }
+ *         location_id: { type: string, example: "67b5bc9961c7b99351d26fb1" }
+ *         type: { type: string, example: "Langstroth" }
+ *         queen:
+ *           type: object
+ *           properties:
+ *             breed: { type: string, example: "Buckfast" }
+ *             year: { type: number, example: 2024 }
+ *     Inspection:
+ *       type: object
+ *       required: [hive_id, details]
+ *       properties:
+ *         hive_id: { type: string }
+ *         details:
+ *           type: object
+ *           properties:
+ *             brood_frames: { type: number, example: 8 }
+ *             honey_frames: { type: number, example: 4 }
+ *             notes: { type: string }
+ * 
  * /api/auth/login:
  *   post:
  *     tags: [Auth]
- *     summary: Login and get JWT token
- *
- * /api/auth/me:
+ *     summary: Authenticate user
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email: { type: string, example: "admin@beesmart.com" }
+ *               password: { type: string, example: "password123" }
+ * 
+ * /api/locations:
  *   get:
- *     tags: [Auth]
- *     summary: Get current user profile
- *     security:
- *       - bearerAuth: []
+ *     tags: [Locations]
+ *     summary: List all apiary locations
+ *   post:
+ *     tags: [Locations]
+ *     summary: Create new location (Admin only)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/Location' }
  *
  * /api/hives:
  *   get:
  *     tags: [Hives]
- *     summary: Get all hives
+ *     summary: Get all hives registry
  *   post:
  *     tags: [Hives]
- *     summary: Create hive (admin)
+ *     summary: Register a new hive (Admin only)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/Hive' }
  *
  * /api/hives/qr/{qr_code}:
  *   get:
  *     tags: [Hives]
- *     summary: Find hive by QR code
- *
- * /api/hives/sick:
- *   get:
- *     tags: [Hives]
- *     summary: Get hives requiring treatment
+ *     summary: Find hive details by scanning QR
+ *     parameters:
+ *       - in: path
+ *         name: qr_code
+ *         required: true
+ *         schema: { type: string }
  *
  * /api/hives/{id}/productivity:
  *   get:
  *     tags: [Hives]
- *     summary: Calculate hive productivity score (1-10)
- *
- * /api/inspections:
- *   post:
- *     tags: [Inspections]
- *     summary: Add inspection record
- *
- * /api/inspections/hive/{hiveId}:
- *   get:
- *     tags: [Inspections]
- *     summary: Get inspection history for hive
+ *     summary: Get automated productivity score (1-10)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
  *
  * /api/inspections/sync:
  *   post:
  *     tags: [Inspections]
- *     summary: Bulk sync inspections from mobile offline mode
- *
- * /api/vet-tasks:
- *   post:
- *     tags: [VetTasks]
- *     summary: Create veterinary task (admin)
+ *     summary: Bulk upload offline inspections
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: array
+ *             items: { $ref: '#/components/schemas/Inspection' }
  *
  * /api/vet-tasks/my-tasks:
  *   get:
  *     tags: [VetTasks]
- *     summary: Get beekeeper tasks for today
+ *     summary: Get active tasks for current beekeeper
  *
  * /api/vet-tasks/{id}/complete:
  *   patch:
  *     tags: [VetTasks]
- *     summary: Mark task as completed
- *
- * /api/iot/webhook/weight:
- *   post:
- *     tags: [IoT]
- *     summary: Public webhook for weight telemetry
+ *     summary: Mark a task as completed
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
  *
  * /api/iot/hive/{hiveId}/yield:
  *   get:
  *     tags: [IoT]
- *     summary: Get daily honey yield by hive
+ *     summary: Get daily weight telemetry analytics
+ *     parameters:
+ *       - in: path
+ *         name: hiveId
+ *         required: true
+ *         schema: { type: string }
  */
-
