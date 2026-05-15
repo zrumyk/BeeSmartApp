@@ -6,6 +6,7 @@ import AdminLayout from '../components/layout/AdminLayout'
 import ShellLayout from '../components/layout/ShellLayout'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage'
 import AdminHivesPage from '../pages/admin/AdminHivesPage'
+import AdminInspectionsPage from '../pages/admin/AdminInspectionsPage'
 import AdminLocationsPage from '../pages/admin/AdminLocationsPage'
 import AdminTasksPage from '../pages/admin/AdminTasksPage'
 import BeekeeperHomePage from '../pages/beekeeper/BeekeeperHomePage'
@@ -36,6 +37,7 @@ function AppRouter() {
           <Route path="/admin" element={<AdminDashboardPage />} />
           <Route path="/admin/locations" element={<AdminLocationsPage />} />
           <Route path="/admin/hives" element={<AdminHivesPage />} />
+          <Route path="/admin/inspections" element={<AdminInspectionsPage />} />
           <Route path="/admin/tasks" element={<AdminTasksPage />} />
         </Route>
       </Route>
