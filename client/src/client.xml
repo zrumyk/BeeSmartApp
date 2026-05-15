@@ -1,0 +1,2092 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+api/axiosClient.js
+api/axiosConfig.js
+api/services/authApi.js
+api/services/hivesApi.js
+api/services/inspectionsApi.js
+api/services/vetTasksApi.js
+App.css
+App.jsx
+app/AppRouter.jsx
+assets/hero.png
+assets/react.svg
+assets/vite.svg
+components/admin/AdminSidebar.jsx
+components/auth/AuthRedirectFallback.jsx
+components/auth/ProtectedRoute.jsx
+components/auth/RoleHomeRedirect.jsx
+components/beekeeper/BottomNavigation.jsx
+components/layout/AdminLayout.jsx
+components/layout/ShellLayout.jsx
+config/constants.js
+hooks/useAuthBootstrap.js
+hooks/useNetworkStatusListener.js
+hooks/useOfflineSync.js
+index.css
+main.jsx
+pages/admin/AdminDashboardPage.jsx
+pages/admin/AdminHivesPage.jsx
+pages/admin/AdminTasksPage.jsx
+pages/beekeeper/BeekeeperHivePage.jsx
+pages/beekeeper/BeekeeperHomePage.jsx
+pages/beekeeper/BeekeeperProfilePage.jsx
+pages/beekeeper/BeekeeperScannerPage.jsx
+pages/beekeeper/BeekeeperTasksPage.jsx
+pages/shared/LoginPage.jsx
+store/authStore.js
+store/networkStore.js
+store/syncQueueStore.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="api/axiosClient.js">
+import axiosClient from './axiosConfig'
+
+export default axiosClient
+</file>
+
+<file path="api/axiosConfig.js">
+import axios from 'axios'
+import useAuthStore from '../store/authStore'
+import { ACCESS_TOKEN_KEY, API_BASE_URL } from '../config/constants'
+
+const axiosConfig = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+axiosConfig.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+
+    return config
+  },
+  (error) => Promise.reject(error),
+)
+
+axiosConfig.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      const { clearAuth } = useAuthStore.getState()
+      clearAuth()
+
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
+    }
+
+    return Promise.reject(error)
+  },
+)
+
+export default axiosConfig
+</file>
+
+<file path="api/services/authApi.js">
+import axiosClient from '../axiosClient'
+
+export async function loginRequest(payload) {
+  const response = await axiosClient.post('/auth/login', payload)
+  return response.data.data
+}
+
+export async function meRequest() {
+  const response = await axiosClient.get('/auth/me')
+  return response.data.data
+}
+
+export async function getBeekeepersRequest() {
+  const response = await axiosClient.get('/auth/beekeepers')
+  return response.data.data ?? []
+}
+</file>
+
+<file path="api/services/hivesApi.js">
+import axiosClient from '../axiosClient'
+
+export async function getAllHives() {
+  const response = await axiosClient.get('/hives')
+  return response.data.data ?? []
+}
+
+export async function getSickHives() {
+  const response = await axiosClient.get('/hives/sick')
+  return response.data.data ?? []
+}
+
+export async function getHiveByQrCode(qrCode) {
+  const response = await axiosClient.get(`/hives/qr/${encodeURIComponent(qrCode)}`)
+  return response.data.data
+}
+</file>
+
+<file path="api/services/inspectionsApi.js">
+import axiosClient from '../axiosClient'
+import { OFFLINE_INSPECTIONS_KEY } from '../../config/constants'
+
+const objectIdPattern = /^[a-f\d]{24}$/i
+
+function isValidInspectionPayload(item) {
+  return Boolean(
+    item &&
+      typeof item === 'object' &&
+      objectIdPattern.test(item.hive_id ?? '') &&
+      item.details &&
+      Number.isFinite(Number(item.details.brood_frames)) &&
+      Number.isFinite(Number(item.details.honey_frames)),
+  )
+}
+
+function normalizeQueueItem(item) {
+  if (!item || typeof item !== 'object') {
+    return null
+  }
+
+  // Legacy client payloads cannot be mapped safely (no hive_id), so skip them.
+  if (!item.hive_id) {
+    return null
+  }
+
+  const normalized = {
+    ...item,
+    hive_id: String(item.hive_id),
+    date: item.date ?? new Date().toISOString(),
+    client_inspection_id:
+      item.client_inspection_id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    details: {
+      brood_frames: Number(item.details?.brood_frames ?? 0),
+      honey_frames: Number(item.details?.honey_frames ?? 0),
+      temper: item.details?.temper ?? '',
+      notes: item.details?.notes ?? '',
+    },
+  }
+
+  return isValidInspectionPayload(normalized) ? normalized : null
+}
+
+export function getOfflineInspections() {
+  const rawValue = localStorage.getItem(OFFLINE_INSPECTIONS_KEY)
+
+  if (!rawValue) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    const normalized = parsed.map(normalizeQueueItem).filter(Boolean)
+
+    if (normalized.length !== parsed.length) {
+      saveOfflineInspections(normalized)
+    }
+
+    return normalized
+  } catch {
+    return []
+  }
+}
+
+export function saveOfflineInspections(inspections) {
+  localStorage.setItem(OFFLINE_INSPECTIONS_KEY, JSON.stringify(inspections))
+}
+
+export function clearOfflineInspections() {
+  localStorage.setItem(OFFLINE_INSPECTIONS_KEY, JSON.stringify([]))
+}
+
+export function enqueueOfflineInspection(inspection) {
+  const normalized = normalizeQueueItem(inspection)
+  if (!normalized) {
+    return getOfflineInspections()
+  }
+
+  const current = getOfflineInspections()
+  const nextQueue = [...current, normalized]
+  saveOfflineInspections(nextQueue)
+  return nextQueue
+}
+
+export async function syncInspectionBatch(inspections) {
+  if (!inspections.length) {
+    return { syncedCount: 0, duplicatesCount: 0, failedCount: 0 }
+  }
+
+  const response = await axiosClient.post('/inspections/sync', inspections)
+
+  return response.data
+}
+
+export async function syncOfflineInspections() {
+  const queue = getOfflineInspections()
+
+  if (!queue.length) {
+    return { syncedCount: 0, queueSize: 0 }
+  }
+
+  const response = await syncInspectionBatch(queue)
+  const failedItems = response?.data?.errors ?? []
+  const failedIds = new Set(
+    failedItems
+      .map((item) => item.client_inspection_id)
+      .filter(Boolean),
+  )
+
+  const nextQueue = queue.filter((item) => failedIds.has(item.client_inspection_id))
+  saveOfflineInspections(nextQueue)
+
+  return {
+    syncedCount: response?.data?.saved ?? 0,
+    duplicatesCount: response?.data?.duplicates ?? 0,
+    failedCount: response?.data?.failed ?? 0,
+    queueSize: nextQueue.length,
+  }
+}
+
+export async function getHiveInspectionHistory(hiveId) {
+  const response = await axiosClient.get(`/inspections/hive/${hiveId}`)
+  return response.data.data ?? []
+}
+</file>
+
+<file path="api/services/vetTasksApi.js">
+import axiosClient from '../axiosClient'
+
+export async function getAllVetTasks() {
+  const response = await axiosClient.get('/vet-tasks')
+  return response.data.data ?? []
+}
+
+export async function getMyVetTasks() {
+  const response = await axiosClient.get('/vet-tasks/my-tasks')
+  return response.data.data ?? []
+}
+
+export async function createVetTask(payload) {
+  const response = await axiosClient.post('/vet-tasks', payload)
+  return response.data.data
+}
+</file>
+
+<file path="App.css">
+.counter {
+  font-size: 16px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
+
+  &:hover {
+    border-color: var(--accent-border);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.hero {
+  position: relative;
+
+  .base,
+  .framework,
+  .vite {
+    inset-inline: 0;
+    margin: 0 auto;
+  }
+
+  .base {
+    width: 170px;
+    position: relative;
+    z-index: 0;
+  }
+
+  .framework,
+  .vite {
+    position: absolute;
+  }
+
+  .framework {
+    z-index: 1;
+    top: 34px;
+    height: 28px;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
+      scale(1.4);
+  }
+
+  .vite {
+    z-index: 0;
+    top: 107px;
+    height: 26px;
+    width: auto;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
+      scale(0.8);
+  }
+}
+
+#center {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+
+  @media (max-width: 1024px) {
+    padding: 32px 20px 24px;
+    gap: 18px;
+  }
+}
+
+#next-steps {
+  display: flex;
+  border-top: 1px solid var(--border);
+  text-align: left;
+
+  & > div {
+    flex: 1 1 0;
+    padding: 32px;
+    @media (max-width: 1024px) {
+      padding: 24px 20px;
+    }
+  }
+
+  .icon {
+    margin-bottom: 16px;
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+#docs {
+  border-right: 1px solid var(--border);
+
+  @media (max-width: 1024px) {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+#next-steps ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin: 32px 0 0;
+
+  .logo {
+    height: 18px;
+  }
+
+  a {
+    color: var(--text-h);
+    font-size: 16px;
+    border-radius: 6px;
+    background: var(--social-bg);
+    display: flex;
+    padding: 6px 12px;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: box-shadow 0.3s;
+
+    &:hover {
+      box-shadow: var(--shadow);
+    }
+    .button-icon {
+      height: 18px;
+      width: 18px;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    li {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    a {
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  }
+}
+
+#spacer {
+  height: 88px;
+  border-top: 1px solid var(--border);
+  @media (max-width: 1024px) {
+    height: 48px;
+  }
+}
+
+.ticks {
+  position: relative;
+  width: 100%;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: -4.5px;
+    border: 5px solid transparent;
+  }
+
+  &::before {
+    left: 0;
+    border-left-color: var(--border);
+  }
+  &::after {
+    right: 0;
+    border-right-color: var(--border);
+  }
+}
+</file>
+
+<file path="App.jsx">
+import AppRouter from './app/AppRouter'
+import useAuthBootstrap from './hooks/useAuthBootstrap'
+import useOfflineSync from './hooks/useOfflineSync'
+import useNetworkStatusListener from './hooks/useNetworkStatusListener'
+
+function App() {
+  useNetworkStatusListener()
+  useOfflineSync()
+  useAuthBootstrap()
+
+  return <AppRouter />
+}
+
+export default App
+</file>
+
+<file path="app/AppRouter.jsx">
+import { Route, Routes } from 'react-router-dom'
+import ProtectedRoute from '../components/auth/ProtectedRoute'
+import AuthRedirectFallback from '../components/auth/AuthRedirectFallback'
+import RoleHomeRedirect from '../components/auth/RoleHomeRedirect'
+import AdminLayout from '../components/layout/AdminLayout'
+import ShellLayout from '../components/layout/ShellLayout'
+import AdminDashboardPage from '../pages/admin/AdminDashboardPage'
+import AdminHivesPage from '../pages/admin/AdminHivesPage'
+import AdminTasksPage from '../pages/admin/AdminTasksPage'
+import BeekeeperHomePage from '../pages/beekeeper/BeekeeperHomePage'
+import BeekeeperHivePage from '../pages/beekeeper/BeekeeperHivePage'
+import BeekeeperProfilePage from '../pages/beekeeper/BeekeeperProfilePage'
+import BeekeeperScannerPage from '../pages/beekeeper/BeekeeperScannerPage'
+import BeekeeperTasksPage from '../pages/beekeeper/BeekeeperTasksPage'
+import LoginPage from '../pages/shared/LoginPage'
+
+function AppRouter() {
+  return (
+    <Routes>
+      <Route path="/" element={<RoleHomeRedirect />} />
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route element={<ProtectedRoute allowedRoles={['beekeeper']} />}>
+        <Route element={<ShellLayout />}>
+          <Route path="/beekeeper" element={<BeekeeperHomePage />} />
+          <Route path="/beekeeper/scanner" element={<BeekeeperScannerPage />} />
+          <Route path="/beekeeper/hive/:qrCode" element={<BeekeeperHivePage />} />
+          <Route path="/beekeeper/tasks" element={<BeekeeperTasksPage />} />
+          <Route path="/beekeeper/profile" element={<BeekeeperProfilePage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/hives" element={<AdminHivesPage />} />
+          <Route path="/admin/tasks" element={<AdminTasksPage />} />
+        </Route>
+      </Route>
+
+      <Route path="*" element={<AuthRedirectFallback />} />
+    </Routes>
+  )
+}
+
+export default AppRouter
+</file>
+
+<file path="assets/react.svg">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
+</file>
+
+<file path="assets/vite.svg">
+<svg xmlns="http://www.w3.org/2000/svg" width="77" height="47" fill="none" aria-labelledby="vite-logo-title" viewBox="0 0 77 47"><title id="vite-logo-title">Vite</title><style>.parenthesis{fill:#000}@media (prefers-color-scheme:dark){.parenthesis{fill:#fff}}</style><path fill="#9135ff" d="M40.151 45.71c-.663.844-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.493c-.92 0-1.457-1.04-.92-1.788l7.479-10.471c1.07-1.498 0-3.578-1.842-3.578H15.443c-.92 0-1.456-1.04-.92-1.788l9.696-13.576c.213-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.472c-1.07 1.497 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.087.89 1.83L40.153 45.712z"/><mask id="a" width="48" height="47" x="14" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M40.047 45.71c-.663.843-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.389c-.92 0-1.457-1.04-.92-1.788l7.479-10.472c1.07-1.497 0-3.578-1.842-3.578H15.34c-.92 0-1.456-1.04-.92-1.788l9.696-13.575c.213-.297.556-.474.92-.474H53.93c.92 0 1.456 1.04.92 1.788L47.37 13.03c-1.07 1.498 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.088.89 1.831L40.049 45.712z"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#eee6ff" rx="5.508" ry="14.704" transform="rotate(269.814 20.96 11.29)scale(-1 1)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#eee6ff" rx="10.399" ry="29.851" transform="rotate(89.814 -16.902 -8.275)scale(1 -1)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#8900ff" rx="5.508" ry="30.487" transform="rotate(89.814 -19.197 -7.127)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.928 4.177)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.738 5.52)scale(1 -1)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#eee6ff" rx="14.072" ry="22.078" transform="rotate(93.35 31.245 55.578)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx="14.592" cy="9.743" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(39.51 14.592 9.743)"/></g><g filter="url(#k)"><ellipse cx="61.728" cy="-5.321" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 61.728 -5.32)"/></g><g filter="url(#l)"><ellipse cx="55.618" cy="7.104" fill="#00c2ff" rx="5.971" ry="9.665" transform="rotate(37.892 55.618 7.104)"/></g><g filter="url(#m)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#n)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#o)"><ellipse cx="49.857" cy="30.678" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 49.857 30.678)"/></g><g filter="url(#p)"><ellipse cx="52.623" cy="33.171" fill="#00c2ff" rx="5.971" ry="15.297" transform="rotate(37.892 52.623 33.17)"/></g></g><path d="M6.919 0c-9.198 13.166-9.252 33.575 0 46.789h6.215c-9.25-13.214-9.196-33.623 0-46.789zm62.424 0h-6.215c9.198 13.166 9.252 33.575 0 46.789h6.215c9.25-13.214 9.196-33.623 0-46.789" class="parenthesis"/><defs><filter id="b" width="60.045" height="41.654" x="-5.564" y="16.92" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-40.407" y="-6.762" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-35.435" y="2.801" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-30.84" y="20.8" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-29.307" y="21.949" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="29.961" y="-17.13" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-13.43" y="-22.082" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="34.321" y="-37.644" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="38.847" y="-10.552" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="22.45" y="-1.645" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="32.919" y="11.36" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter></defs></svg>
+</file>
+
+<file path="components/admin/AdminSidebar.jsx">
+import { NavLink } from 'react-router-dom'
+
+const navItems = [
+  { to: '/admin', label: 'Dashboard', end: true },
+  { to: '/admin/hives', label: 'Hives' },
+  { to: '/admin/tasks', label: 'Tasks' },
+]
+
+function AdminSidebar() {
+  return (
+    <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-zinc-800 bg-zinc-950 p-4">
+      <h2 className="mb-6 text-xl font-black text-yellow-300">BeeSmart Admin</h2>
+
+      <nav className="flex flex-col gap-2">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            className={({ isActive }) =>
+              `rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                isActive
+                  ? 'bg-yellow-300 text-black'
+                  : 'bg-zinc-900 text-zinc-200 hover:bg-zinc-800 hover:text-white'
+              }`
+            }
+            end={item.end}
+            to={item.to}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+    </aside>
+  )
+}
+
+export default AdminSidebar
+</file>
+
+<file path="components/auth/AuthRedirectFallback.jsx">
+import { Navigate } from 'react-router-dom'
+import useAuthStore from '../../store/authStore'
+
+function AuthRedirectFallback() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const role = useAuthStore((state) => state.role ?? state.user?.role)
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (role === 'admin') {
+    return <Navigate to="/admin" replace />
+  }
+
+  return <Navigate to="/beekeeper" replace />
+}
+
+export default AuthRedirectFallback
+</file>
+
+<file path="components/auth/ProtectedRoute.jsx">
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import useAuthStore from '../../store/authStore'
+
+function ProtectedRoute({ allowedRoles }) {
+  const location = useLocation()
+
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const role = useAuthStore((state) => state.role ?? state.user?.role)
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
+
+  if (!role) {
+    return (
+      <section className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-100">
+        Завантаження профілю...
+      </section>
+    )
+  }
+
+  if (!allowedRoles.includes(role)) {
+    return <Navigate to="/" replace />
+  }
+
+  return <Outlet />
+}
+
+export default ProtectedRoute
+</file>
+
+<file path="components/auth/RoleHomeRedirect.jsx">
+import { Navigate } from 'react-router-dom'
+import useAuthStore from '../../store/authStore'
+
+function RoleHomeRedirect() {
+  const { isAuthenticated, role } = useAuthStore((state) => ({
+    isAuthenticated: state.isAuthenticated,
+    role: state.role ?? state.user?.role,
+  }))
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!role) {
+    return (
+      <section className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-100">
+        Завантаження профілю...
+      </section>
+    )
+  }
+
+  if (role === 'admin') {
+    return <Navigate to="/admin" replace />
+  }
+
+  if (role === 'beekeeper') {
+    return <Navigate to="/beekeeper" replace />
+  }
+
+  return <Navigate to="/login" replace />
+}
+
+export default RoleHomeRedirect
+</file>
+
+<file path="components/beekeeper/BottomNavigation.jsx">
+import { NavLink } from 'react-router-dom'
+
+const navItems = [
+  {
+    to: '/beekeeper',
+    label: 'Головна',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 10.5 12 3l9 7.5" />
+        <path d="M5 9.5V21h14V9.5" />
+      </svg>
+    ),
+  },
+  {
+    to: '/beekeeper/tasks',
+    label: 'Завдання',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M8 6h13M8 12h13M8 18h13" />
+        <path d="m3 6 1.5 1.5L6.5 5.5M3 12l1.5 1.5L6.5 11.5M3 18l1.5 1.5L6.5 17.5" />
+      </svg>
+    ),
+  },
+  {
+    to: '/beekeeper/profile',
+    label: 'Профіль',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21c2-4 5-6 8-6s6 2 8 6" />
+      </svg>
+    ),
+  },
+]
+
+function BottomNavigation() {
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t-2 border-yellow-300 bg-black px-3 py-2">
+      <div className="mx-auto grid w-full max-w-md grid-cols-3 gap-2">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/beekeeper'}
+            className={({ isActive }) =>
+              `flex min-h-14 flex-col items-center justify-center rounded-xl border-2 text-xs font-bold ${
+                isActive
+                  ? 'border-yellow-300 bg-yellow-300 text-black'
+                  : 'border-zinc-700 bg-zinc-900 text-zinc-100'
+              }`
+            }
+          >
+            {item.icon}
+            <span className="mt-1">{item.label}</span>
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+export default BottomNavigation
+</file>
+
+<file path="components/layout/AdminLayout.jsx">
+import { Outlet, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import useAuthStore from '../../store/authStore'
+import AdminSidebar from '../admin/AdminSidebar'
+
+function AdminLayout() {
+  const navigate = useNavigate()
+  const clearAuth = useAuthStore((state) => state.clearAuth)
+
+  const handleLogout = () => {
+    clearAuth()
+    toast.success('Ви вийшли з системи')
+    navigate('/login', { replace: true })
+  }
+
+  return (
+    <main className="min-h-screen bg-zinc-950 text-white">
+      <div className="mx-auto flex min-h-screen max-w-[1440px]">
+        <AdminSidebar />
+
+        <section className="flex min-h-screen flex-1 flex-col">
+          <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+            <p className="text-sm font-semibold text-zinc-300">Industrial Apiary Control Center</p>
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-300 transition hover:border-yellow-300 hover:text-yellow-300"
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
+          </header>
+
+          <Outlet />
+        </section>
+      </div>
+    </main>
+  )
+}
+
+export default AdminLayout
+</file>
+
+<file path="components/layout/ShellLayout.jsx">
+import { Outlet } from 'react-router-dom'
+import useAuthStore from '../../store/authStore'
+import BottomNavigation from '../beekeeper/BottomNavigation'
+
+function ShellLayout() {
+  const user = useAuthStore((state) => state.user)
+
+  return (
+    <main className="min-h-screen bg-zinc-950 text-white">
+      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+        <p className="text-sm font-semibold text-yellow-300">BeeSmart Platform</p>
+        <p className="text-xs text-zinc-300">{user?.name ?? 'Пасічник'}</p>
+      </header>
+      <Outlet />
+      <BottomNavigation />
+    </main>
+  )
+}
+
+export default ShellLayout
+</file>
+
+<file path="config/constants.js">
+export const ACCESS_TOKEN_KEY = 'beesmart_access_token'
+export const AUTH_STORAGE_KEY = 'beesmart_auth'
+export const OFFLINE_INSPECTIONS_KEY = 'offlineInspections'
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api'
+</file>
+
+<file path="hooks/useAuthBootstrap.js">
+import { useEffect } from 'react'
+import { meRequest } from '../api/services/authApi'
+import useAuthStore from '../store/authStore'
+
+function useAuthBootstrap() {
+  const token = useAuthStore((state) => state.token)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const setAuth = useAuthStore((state) => state.setAuth)
+  const clearAuth = useAuthStore((state) => state.clearAuth)
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      if (!token || !isAuthenticated) {
+        return
+      }
+
+      try {
+        const user = await meRequest()
+        setAuth({ token, user, role: user?.role })
+      } catch (error) {
+        if (error?.response?.status === 401) {
+          clearAuth()
+        }
+      }
+    }
+
+    bootstrap()
+  }, [clearAuth, isAuthenticated, setAuth, token])
+}
+
+export default useAuthBootstrap
+</file>
+
+<file path="hooks/useNetworkStatusListener.js">
+import { useEffect } from 'react'
+import useNetworkStore from '../store/networkStore'
+
+function useNetworkStatusListener() {
+  const setOnlineStatus = useNetworkStore((state) => state.setOnlineStatus)
+
+  useEffect(() => {
+    const handleOnline = () => setOnlineStatus(true)
+    const handleOffline = () => setOnlineStatus(false)
+
+    setOnlineStatus(navigator.onLine)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [setOnlineStatus])
+}
+
+export default useNetworkStatusListener
+</file>
+
+<file path="hooks/useOfflineSync.js">
+import { useCallback, useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
+import { syncOfflineInspections } from '../api/services/inspectionsApi'
+import useNetworkStore from '../store/networkStore'
+import useSyncQueueStore from '../store/syncQueueStore'
+
+function useOfflineSync() {
+  const isOnline = useNetworkStore((state) => state.isOnline)
+  const refreshUnsyncedCount = useSyncQueueStore((state) => state.refreshUnsyncedCount)
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const runSync = useCallback(async () => {
+    if (isSyncing) {
+      return null
+    }
+
+    setIsSyncing(true)
+    try {
+      const result = await syncOfflineInspections()
+      if ((result?.syncedCount ?? 0) > 0 || (result?.duplicatesCount ?? 0) > 0) {
+        toast.success(
+          `Синхронізовано: ${result.syncedCount}, дублікатів: ${result.duplicatesCount}`,
+        )
+      }
+      if ((result?.failedCount ?? 0) > 0) {
+        toast.error(`Не вдалося синхронізувати: ${result.failedCount}`)
+      }
+      return result
+    } catch {
+      toast.error('Помилка мережі під час синхронізації')
+      return null
+    } finally {
+      refreshUnsyncedCount()
+      setIsSyncing(false)
+    }
+  }, [isSyncing, refreshUnsyncedCount])
+
+  useEffect(() => {
+    refreshUnsyncedCount()
+  }, [refreshUnsyncedCount])
+
+  useEffect(() => {
+    if (!isOnline) {
+      return
+    }
+
+    const autoSync = async () => {
+      try {
+        await syncOfflineInspections()
+      } catch {
+        // Keep queue for the next online event.
+      } finally {
+        refreshUnsyncedCount()
+      }
+    }
+
+    autoSync()
+  }, [isOnline, refreshUnsyncedCount])
+
+  useEffect(() => {
+    const handleOnline = () => {
+      syncOfflineInspections()
+        .catch(() => {
+          // Keep queue for the next online event.
+        })
+        .finally(() => {
+          refreshUnsyncedCount()
+        })
+    }
+
+    window.addEventListener('online', handleOnline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [refreshUnsyncedCount])
+
+  return {
+    syncNow: runSync,
+    isSyncing,
+  }
+}
+
+export default useOfflineSync
+</file>
+
+<file path="index.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply m-0 bg-beesmart-black font-sans text-white antialiased;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+</file>
+
+<file path="main.jsx">
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Toaster } from 'react-hot-toast'
+import { BrowserRouter } from 'react-router-dom'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <BrowserRouter>
+      <App />
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: {
+            background: '#111827',
+            color: '#f9fafb',
+            border: '1px solid #facc15',
+          },
+        }}
+      />
+    </BrowserRouter>
+  </StrictMode>,
+)
+</file>
+
+<file path="pages/admin/AdminDashboardPage.jsx">
+import { useEffect, useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { getAllHives, getSickHives } from '../../api/services/hivesApi'
+import { getHiveInspectionHistory } from '../../api/services/inspectionsApi'
+
+function AdminDashboardPage() {
+  const [hives, setHives] = useState([])
+  const [sickHives, setSickHives] = useState([])
+  const [chartData, setChartData] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      setIsLoading(true)
+      try {
+        const [hivesData, sickData] = await Promise.all([getAllHives(), getSickHives()])
+        setHives(hivesData)
+        setSickHives(sickData)
+
+        const firstHiveId = hivesData[0]?._id
+        if (firstHiveId) {
+          const history = await getHiveInspectionHistory(firstHiveId)
+          const series = history
+            .slice(0, 7)
+            .reverse()
+            .map((item) => ({
+              day: new Date(item.date).toLocaleDateString(),
+              honey_frames: item.details?.honey_frames ?? 0,
+            }))
+          setChartData(series)
+        }
+      } catch {
+        toast.error('Не вдалося завантажити Dashboard')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDashboard()
+  }, [])
+
+  const totalHives = hives.length
+  const weakOrMissingQueens = useMemo(
+    () => hives.filter((item) => item.status === 'weak' || item.status === 'needs_attention' || item.status === 'sick').length,
+    [hives],
+  )
+  const avgBroodFrames = useMemo(() => {
+    if (!chartData.length) {
+      return 0
+    }
+    return chartData.reduce((sum, point) => sum + point.honey_frames, 0) / chartData.length
+  }, [chartData])
+
+  if (isLoading) {
+    return (
+      <section className="flex-1 p-6">
+        <p className="font-semibold text-zinc-200">Завантаження Dashboard...</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="flex-1 space-y-6 p-6">
+      <h1 className="text-3xl font-black text-yellow-300">Dashboard</h1>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="text-sm text-zinc-400">Total hives</p>
+          <p className="mt-2 text-4xl font-black text-white">{totalHives}</p>
+        </article>
+        <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="text-sm text-zinc-400">Weak / missing queens</p>
+          <p className="mt-2 text-4xl font-black text-amber-300">{weakOrMissingQueens}</p>
+        </article>
+        <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="text-sm text-zinc-400">Average honey frames (7 recent inspections)</p>
+          <p className="mt-2 text-4xl font-black text-emerald-300">{avgBroodFrames.toFixed(1)}</p>
+        </article>
+      </div>
+
+      <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+        <h2 className="mb-4 text-xl font-bold text-zinc-100">Recent honey frames trend</h2>
+        <div className="h-[320px] w-full">
+          {chartData.length === 0 ? (
+            <p className="text-zinc-300">Тут поки що порожньо</p>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#FDE047" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="#FDE047" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="4 4" stroke="#27272A" />
+              <XAxis dataKey="day" stroke="#A1A1AA" />
+              <YAxis stroke="#A1A1AA" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#18181B',
+                  border: '1px solid #3F3F46',
+                  borderRadius: '12px',
+                  color: '#FFFFFF',
+                }}
+              />
+              <Area
+                dataKey="honey_frames"
+                stroke="#FDE047"
+                strokeWidth={3}
+                fillOpacity={1}
+                fill="url(#weightFill)"
+              />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </article>
+
+      <article className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4">
+        <h2 className="mb-3 text-xl font-bold text-rose-200">Critical alerts</h2>
+        <ul className="space-y-2">
+          {sickHives.length === 0 ? (
+            <li className="rounded-lg border border-rose-400/40 bg-black/30 px-3 py-2 text-sm text-rose-100">
+              Тут поки що порожньо
+            </li>
+          ) : (
+            sickHives.map((hive) => (
+              <li
+                key={hive._id}
+                className="rounded-lg border border-rose-400/40 bg-black/30 px-3 py-2 text-sm text-rose-100"
+              >
+                Hive {hive.qr_code}: status {hive.status}, location {hive?.location_id?.name ?? '—'}
+              </li>
+            ))
+          )}
+        </ul>
+      </article>
+    </section>
+  )
+}
+
+export default AdminDashboardPage
+</file>
+
+<file path="pages/admin/AdminHivesPage.jsx">
+import { useEffect, useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
+import { getAllHives } from '../../api/services/hivesApi'
+
+function AdminHivesPage() {
+  const [hives, setHives] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedLocation, setSelectedLocation] = useState('All')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  useEffect(() => {
+    const fetchHives = async () => {
+      setIsLoading(true)
+      try {
+        const data = await getAllHives()
+        setHives(data)
+      } catch {
+        toast.error('Не вдалося завантажити вулики')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchHives()
+  }, [])
+
+  const locations = useMemo(() => {
+    const unique = new Set(hives.map((hive) => hive.location_id?.name).filter(Boolean))
+    return ['All', ...Array.from(unique)]
+  }, [hives])
+
+  const filteredHives = useMemo(() => {
+    return hives.filter((hive) => {
+      const locationMatch =
+        selectedLocation === 'All' ? true : hive.location_id?.name === selectedLocation
+      const textMatch = `${hive.qr_code} ${hive.type} ${hive.status}`
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+
+      return locationMatch && textMatch
+    })
+  }, [hives, searchTerm, selectedLocation])
+
+  if (isLoading) {
+    return (
+      <section className="flex-1 p-6">
+        <p className="font-semibold text-zinc-200">Завантаження вуликів...</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="flex-1 space-y-5 p-6">
+      <h1 className="text-3xl font-black text-yellow-300">Hives Registry</h1>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Location filter</span>
+          <select
+            className="h-11 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-sm text-white outline-none focus:border-yellow-300"
+            value={selectedLocation}
+            onChange={(event) => setSelectedLocation(event.target.value)}
+          >
+            {locations.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Search hive / type</span>
+          <input
+            className="h-11 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-sm text-white outline-none focus:border-yellow-300"
+            type="text"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="HIVE-001 or Langstroth"
+          />
+        </label>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900">
+        {filteredHives.length === 0 ? (
+          <p className="px-4 py-6 text-center font-semibold text-zinc-300">Тут поки що порожньо</p>
+        ) : (
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-zinc-800/70 text-zinc-300">
+              <tr>
+                <th className="px-4 py-3 font-semibold">QR</th>
+                <th className="px-4 py-3 font-semibold">Location</th>
+                <th className="px-4 py-3 font-semibold">Type</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Queen</th>
+                <th className="px-4 py-3 font-semibold">Installed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredHives.map((hive) => (
+                <tr key={hive._id} className="border-t border-zinc-800">
+                  <td className="px-4 py-3 font-bold text-yellow-200">{hive.qr_code}</td>
+                  <td className="px-4 py-3 text-zinc-200">{hive.location_id?.name ?? '—'}</td>
+                  <td className="px-4 py-3 text-zinc-200">{hive.type}</td>
+                  <td className="px-4 py-3 text-zinc-200">{hive.status}</td>
+                  <td className="px-4 py-3 text-zinc-200">{hive.queen?.breed ?? '—'}</td>
+                  <td className="px-4 py-3 text-zinc-200">
+                    {new Date(hive.installed_at).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  )
+}
+
+export default AdminHivesPage
+</file>
+
+<file path="pages/admin/AdminTasksPage.jsx">
+import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
+import { getBeekeepersRequest } from '../../api/services/authApi'
+import { getAllHives } from '../../api/services/hivesApi'
+import { createVetTask, getAllVetTasks } from '../../api/services/vetTasksApi'
+
+function AdminTasksPage() {
+  const [hives, setHives] = useState([])
+  const [beekeepers, setBeekeepers] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [hiveId, setHiveId] = useState('')
+  const [assignedTo, setAssignedTo] = useState('')
+  const [treatmentType, setTreatmentType] = useState('Обробка від кліща')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [notes, setNotes] = useState('')
+
+  const fetchData = async () => {
+    setIsLoading(true)
+    try {
+      const [hivesData, beekeepersData, tasksData] = await Promise.all([
+        getAllHives(),
+        getBeekeepersRequest(),
+        getAllVetTasks(),
+      ])
+
+      setHives(hivesData)
+      setBeekeepers(beekeepersData)
+      setTasks(tasksData)
+
+      if (hivesData[0]?._id) {
+        setHiveId(hivesData[0]._id)
+      }
+      if (beekeepersData[0]?._id) {
+        setAssignedTo(beekeepersData[0]._id)
+      }
+    } catch {
+      toast.error('Не вдалося завантажити дані задач')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchData()
+    }, 0)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setIsSubmitting(true)
+
+    try {
+      await createVetTask({
+        hive_id: hiveId,
+        assigned_to: assignedTo,
+        task_type: treatmentType,
+        medication: notes,
+        due_date: scheduledDate,
+      })
+      toast.success('Завдання створено')
+      await fetchData()
+      setTreatmentType('Обробка від кліща')
+      setScheduledDate('')
+      setNotes('')
+    } catch (error) {
+      toast.error(error?.response?.data?.message ?? 'Не вдалося створити завдання')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <section className="flex-1 p-6">
+        <p className="font-semibold text-zinc-200">Завантаження задач...</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="flex-1 space-y-5 p-6">
+      <h1 className="text-3xl font-black text-yellow-300">Treatment Assignment</h1>
+
+      <form
+        className="max-w-3xl space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
+        onSubmit={handleSubmit}
+      >
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Hive ID</span>
+          <select
+            className="h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-yellow-300"
+            value={hiveId}
+            onChange={(event) => setHiveId(event.target.value)}
+          >
+            {hives.map((hive) => (
+              <option key={hive._id} value={hive._id}>
+                {hive.qr_code} ({hive.status})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Beekeeper</span>
+          <select
+            className="h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-yellow-300"
+            value={assignedTo}
+            onChange={(event) => setAssignedTo(event.target.value)}
+          >
+            {beekeepers.map((beekeeper) => (
+              <option key={beekeeper._id} value={beekeeper._id}>
+                {beekeeper.name} ({beekeeper.email})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Treatment type</span>
+          <select
+            className="h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-yellow-300"
+            value={treatmentType}
+            onChange={(event) => setTreatmentType(event.target.value)}
+          >
+            <option>Обробка від кліща</option>
+            <option>Лікування нозематозу</option>
+            <option>Санація вулика</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Scheduled date</span>
+          <input
+            className="h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-yellow-300"
+            type="date"
+            value={scheduledDate}
+            onChange={(event) => setScheduledDate(event.target.value)}
+            required
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Medication / Notes</span>
+          <textarea
+            className="min-h-24 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:border-yellow-300"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Additional veterinary instructions"
+          />
+        </label>
+
+        <button
+          className="h-12 rounded-xl bg-yellow-300 px-5 text-sm font-black text-black transition hover:bg-yellow-200 disabled:opacity-60"
+          type="submit"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? 'Creating...' : 'Assign treatment'}
+        </button>
+      </form>
+
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+        <h2 className="mb-3 text-xl font-bold text-zinc-100">Existing tasks</h2>
+        {tasks.length === 0 ? (
+          <p className="text-zinc-300">Тут поки що порожньо</p>
+        ) : (
+          <div className="space-y-3">
+            {tasks.map((task) => (
+              <article key={task._id} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                <p className="font-semibold text-yellow-200">{task.task_type}</p>
+                <p className="text-sm text-zinc-300">Hive: {task?.hive_id?.qr_code ?? '—'}</p>
+                <p className="text-sm text-zinc-300">
+                  Assignee: {task?.assigned_to?.name ?? '—'} ({task?.assigned_to?.email ?? '—'})
+                </p>
+                <p className="text-sm text-zinc-300">
+                  Due: {new Date(task.due_date).toLocaleDateString()} | Status: {task.status}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+export default AdminTasksPage
+</file>
+
+<file path="pages/beekeeper/BeekeeperHivePage.jsx">
+import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { getHiveByQrCode } from '../../api/services/hivesApi'
+import {
+  enqueueOfflineInspection,
+  syncOfflineInspections,
+} from '../../api/services/inspectionsApi'
+import useNetworkStore from '../../store/networkStore'
+import useSyncQueueStore from '../../store/syncQueueStore'
+
+function BeekeeperHivePage() {
+  const { qrCode } = useParams()
+  const isOnline = useNetworkStore((state) => state.isOnline)
+  const refreshUnsyncedCount = useSyncQueueStore((state) => state.refreshUnsyncedCount)
+  const [hive, setHive] = useState(null)
+  const [isLoadingHive, setIsLoadingHive] = useState(true)
+
+  const [framesCount, setFramesCount] = useState('10')
+  const [honeyFramesCount, setHoneyFramesCount] = useState('4')
+  const [diseases, setDiseases] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    const fetchHive = async () => {
+      setIsLoadingHive(true)
+      try {
+        const data = await getHiveByQrCode(qrCode)
+        setHive(data)
+      } catch {
+        toast.error('Вулик за QR не знайдено')
+      } finally {
+        setIsLoadingHive(false)
+      }
+    }
+
+    fetchHive()
+  }, [qrCode])
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+
+    if (!hive?._id) {
+      toast.error('Неможливо зберегти огляд: вулик не знайдено')
+      return
+    }
+
+    setIsSaving(true)
+
+    const inspection = {
+      hive_id: hive?._id,
+      date: new Date().toISOString(),
+      details: {
+        brood_frames: Number(framesCount),
+        honey_frames: Number(honeyFramesCount),
+        temper: '',
+        notes: diseases,
+      },
+    }
+
+    if (!isOnline) {
+      enqueueOfflineInspection(inspection)
+      refreshUnsyncedCount()
+      toast.success('Збережено локально')
+      setIsSaving(false)
+      return
+    }
+
+    try {
+      enqueueOfflineInspection(inspection)
+      const result = await syncOfflineInspections()
+      refreshUnsyncedCount()
+      if ((result?.syncedCount ?? 0) > 0 || (result?.duplicatesCount ?? 0) > 0) {
+        toast.success('Огляд синхронізовано')
+      }
+      if ((result?.failedCount ?? 0) > 0) {
+        toast.error('Частину записів не вдалося синхронізувати')
+      }
+    } catch {
+      refreshUnsyncedCount()
+      toast.error('Мережа нестабільна: збережено локально')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (isLoadingHive) {
+    return (
+      <section className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center bg-black p-4 pb-24">
+        <p className="text-base font-semibold text-zinc-200">Завантаження вулика...</p>
+      </section>
+    )
+  }
+
+  if (!hive) {
+    return (
+      <section className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 bg-black p-4 pb-24 text-center">
+        <h1 className="text-2xl font-black text-yellow-300">Картка вулика</h1>
+        <p className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-200">
+          Тут поки що порожньо
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-black p-4 pb-24">
+      <h1 className="text-2xl font-black text-yellow-300">Картка вулика</h1>
+      <p className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
+        QR: {hive.qr_code ?? qrCode}
+      </p>
+
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Кількість рамок</span>
+          <input
+            className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-lg outline-none focus:border-yellow-300"
+            min="0"
+            type="number"
+            value={framesCount}
+            onChange={(event) => setFramesCount(event.target.value)}
+            required
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Медові рамки</span>
+          <input
+            className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-lg outline-none focus:border-yellow-300"
+            min="0"
+            type="number"
+            value={honeyFramesCount}
+            onChange={(event) => setHoneyFramesCount(event.target.value)}
+            required
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-300">Хвороби / примітки</span>
+          <textarea
+            className="min-h-24 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base outline-none focus:border-yellow-300"
+            value={diseases}
+            onChange={(event) => setDiseases(event.target.value)}
+            placeholder="Опишіть симптоми або залиште порожнім"
+          />
+        </label>
+
+        <button
+          className="h-14 w-full rounded-2xl border-2 border-yellow-300 bg-yellow-300 text-lg font-black text-black disabled:opacity-60"
+          disabled={isSaving}
+          type="submit"
+        >
+          {isSaving ? 'Збереження...' : 'Зберегти огляд'}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+export default BeekeeperHivePage
+</file>
+
+<file path="pages/beekeeper/BeekeeperHomePage.jsx">
+import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+import { syncOfflineInspections } from '../../api/services/inspectionsApi'
+import useNetworkStore from '../../store/networkStore'
+import useSyncQueueStore from '../../store/syncQueueStore'
+
+function BeekeeperHomePage() {
+  const isOnline = useNetworkStore((state) => state.isOnline)
+  const unsyncedCount = useSyncQueueStore((state) => state.unsyncedCount)
+  const refreshUnsyncedCount = useSyncQueueStore((state) => state.refreshUnsyncedCount)
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const handleManualSync = async () => {
+    if (isSyncing || !isOnline || unsyncedCount === 0) {
+      return
+    }
+
+    setIsSyncing(true)
+    try {
+      const result = await syncOfflineInspections()
+      if ((result?.syncedCount ?? 0) > 0 || (result?.duplicatesCount ?? 0) > 0) {
+        toast.success(`Синхронізовано: ${result.syncedCount}, дублікатів: ${result.duplicatesCount}`)
+      }
+      if ((result?.failedCount ?? 0) > 0) {
+        toast.error(`Не вдалося синхронізувати: ${result.failedCount}`)
+      }
+    } catch {
+      toast.error('Помилка мережі під час синхронізації')
+    } finally {
+      refreshUnsyncedCount()
+      setIsSyncing(false)
+    }
+  }
+
+  return (
+    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-black p-4 pb-24">
+      <h1 className="text-3xl font-black tracking-wide text-yellow-300">BeeSmart Field</h1>
+
+      <div
+        className={`rounded-xl border-2 px-4 py-3 text-sm font-bold ${
+          isOnline
+            ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+            : 'border-rose-400 bg-rose-500/20 text-rose-200'
+        }`}
+      >
+        Інтернет: {isOnline ? 'є зʼєднання' : 'офлайн'}
+      </div>
+
+      <div className="rounded-xl border-2 border-yellow-300 bg-zinc-900 px-4 py-3">
+        <p className="text-sm font-semibold text-zinc-300">Не синхронізовано</p>
+        <p className="text-3xl font-black text-yellow-300">{unsyncedCount}</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleManualSync}
+        disabled={!isOnline || isSyncing || unsyncedCount === 0}
+        className="flex h-14 items-center justify-center rounded-2xl border-2 border-emerald-300 bg-emerald-500 px-4 text-base font-black text-black disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isSyncing ? 'Синхронізація...' : `Синхронізувати зараз (${unsyncedCount})`}
+      </button>
+
+      <Link
+        className="flex h-24 items-center justify-center rounded-2xl border-2 border-yellow-300 bg-yellow-300 text-xl font-black text-black"
+        to="/beekeeper/scanner"
+      >
+        Сканувати QR-код вулика
+      </Link>
+
+      <div className="grid grid-cols-1 gap-3">
+        <Link
+          className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-4 text-center font-bold text-white"
+          to="/beekeeper/tasks"
+        >
+          Завдання
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+export default BeekeeperHomePage
+</file>
+
+<file path="pages/beekeeper/BeekeeperProfilePage.jsx">
+import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import useAuthStore from '../../store/authStore'
+
+function BeekeeperProfilePage() {
+  const navigate = useNavigate()
+  const user = useAuthStore((state) => state.user)
+  const clearAuth = useAuthStore((state) => state.clearAuth)
+
+  const handleLogout = () => {
+    clearAuth()
+    toast.success('Ви вийшли з системи')
+    navigate('/login', { replace: true })
+  }
+
+  return (
+    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-black p-4 pb-24">
+      <h1 className="text-2xl font-black text-yellow-300">Профіль пасічника</h1>
+
+      <div className="space-y-2 rounded-xl border-2 border-zinc-700 bg-zinc-900 p-4">
+        <p className="text-sm text-zinc-300">Ім'я</p>
+        <p className="text-lg font-bold text-white">{user?.name ?? 'Не вказано'}</p>
+        <p className="mt-3 text-sm text-zinc-300">Email</p>
+        <p className="text-base font-semibold text-white">{user?.email ?? 'Не вказано'}</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="h-14 w-full rounded-2xl border-2 border-rose-400 bg-rose-600 text-lg font-black text-white"
+      >
+        Вийти з системи
+      </button>
+    </section>
+  )
+}
+
+export default BeekeeperProfilePage
+</file>
+
+<file path="pages/beekeeper/BeekeeperScannerPage.jsx">
+import { QrReader } from 'react-qr-reader'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+
+function BeekeeperScannerPage() {
+  const navigate = useNavigate()
+  const [scanError, setScanError] = useState('')
+
+  const handleResult = (result, error) => {
+    if (result?.text) {
+      navigate(`/beekeeper/hive/${encodeURIComponent(result.text)}`)
+      return
+    }
+
+    if (error?.name === 'NotAllowedError') {
+      setScanError('Немає доступу до камери. Дозвольте використання камери у браузері.')
+    }
+  }
+
+  return (
+    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-black p-4">
+      <h1 className="text-2xl font-black text-yellow-300">Сканер QR</h1>
+      <p className="text-sm text-zinc-300">Наведіть камеру на QR-код вулика.</p>
+
+      <div className="overflow-hidden rounded-2xl border-2 border-yellow-300">
+        <QrReader
+          constraints={{ facingMode: 'environment' }}
+          onResult={handleResult}
+          containerStyle={{ width: '100%' }}
+          videoContainerStyle={{ width: '100%' }}
+          videoStyle={{ width: '100%' }}
+        />
+      </div>
+
+      {scanError ? (
+        <p className="rounded-xl bg-rose-500/20 px-3 py-2 text-sm text-rose-200">{scanError}</p>
+      ) : null}
+
+      <Link
+        className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-center font-bold text-white"
+        to="/beekeeper"
+      >
+        Назад
+      </Link>
+    </section>
+  )
+}
+
+export default BeekeeperScannerPage
+</file>
+
+<file path="pages/beekeeper/BeekeeperTasksPage.jsx">
+import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
+import { getMyVetTasks } from '../../api/services/vetTasksApi'
+
+function BeekeeperTasksPage() {
+  const [tasks, setTasks] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      setIsLoading(true)
+      try {
+        const data = await getMyVetTasks()
+        setTasks(data)
+      } catch {
+        toast.error('Не вдалося завантажити завдання')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchTasks()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <section className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center bg-black p-4 pb-24">
+        <p className="text-base font-semibold text-zinc-200">Завантаження завдань...</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-black p-4 pb-24">
+      <h1 className="text-2xl font-black text-yellow-300">Мої активні завдання</h1>
+      <div className="space-y-3">
+        {tasks.length === 0 ? (
+          <p className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-4 text-center font-semibold text-zinc-200">
+            Тут поки що порожньо
+          </p>
+        ) : (
+          tasks.map((task) => (
+            <article
+              key={task._id}
+              className="rounded-xl border-2 border-zinc-700 bg-zinc-900 px-4 py-4"
+            >
+              <p className="text-base font-bold text-zinc-100">{task.task_type}</p>
+              <p className="mt-1 text-sm text-zinc-300">Вулик: {task?.hive_id?.qr_code ?? '—'}</p>
+              <p className="mt-1 text-sm text-zinc-300">
+                До виконання: {new Date(task.due_date).toLocaleDateString()}
+              </p>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  )
+}
+
+export default BeekeeperTasksPage
+</file>
+
+<file path="pages/shared/LoginPage.jsx">
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { loginRequest } from '../../api/services/authApi'
+import useAuthStore from '../../store/authStore'
+
+function LoginPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const fromPath = location.state?.from?.pathname
+  const setAuth = useAuthStore((state) => state.setAuth)
+
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setIsLoading(true)
+
+    try {
+      const data = await loginRequest({ email, password })
+      const token = data?.token
+      const user = data?.user ?? null
+      const role = data?.user?.role ?? data?.role
+
+      if (!token || !role) {
+        throw new Error('Missing token or role in login response')
+      }
+
+      setAuth({ token, user, role })
+
+      if (fromPath) {
+        navigate(fromPath, { replace: true })
+      } else {
+        navigate(role === 'admin' ? '/admin' : '/beekeeper', { replace: true })
+      }
+    } catch (error) {
+      const message =
+        error?.response?.data?.message ??
+        'Login failed. Please check credentials and try again.'
+      toast.error(message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <section className="flex min-h-screen items-center justify-center bg-yellow-400 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-black p-6 text-white shadow-xl">
+        <h1 className="text-2xl font-bold">BeeSmart</h1>
+        <p className="mt-2 text-sm text-zinc-300">Sign in to continue.</p>
+
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+          <label className="block">
+            <span className="mb-2 block text-sm text-zinc-300">Email</span>
+            <input
+              className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-base outline-none transition focus:border-yellow-300"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="admin@beesmart.com"
+              required
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm text-zinc-300">Password</span>
+            <input
+              className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-base outline-none transition focus:border-yellow-300"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter password"
+              required
+            />
+          </label>
+
+          <button
+            className="h-12 w-full rounded-xl bg-yellow-300 text-base font-bold text-black transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-60"
+            type="submit"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </section>
+  )
+}
+
+export default LoginPage
+</file>
+
+<file path="store/authStore.js">
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { ACCESS_TOKEN_KEY, AUTH_STORAGE_KEY } from '../config/constants'
+
+const initialUser = null
+const initialRole = null
+const initialToken = null
+
+const useAuthStore = create(
+  persist(
+    (set) => ({
+      user: initialUser,
+      role: initialRole,
+      token: initialToken,
+      isAuthenticated: false,
+
+      setAuth: ({ user, role, token }) => {
+        if (token) {
+          localStorage.setItem(ACCESS_TOKEN_KEY, token)
+        } else {
+          localStorage.removeItem(ACCESS_TOKEN_KEY)
+        }
+
+        set({
+          user: user ?? initialUser,
+          role: role ?? initialRole,
+          token: token ?? initialToken,
+          isAuthenticated: Boolean(token),
+        })
+      },
+
+      clearAuth: () => {
+        localStorage.removeItem(ACCESS_TOKEN_KEY)
+        set({
+          user: initialUser,
+          role: initialRole,
+          token: initialToken,
+          isAuthenticated: false,
+        })
+      },
+    }),
+    {
+      name: AUTH_STORAGE_KEY,
+      partialize: (state) => ({
+        user: state.user,
+        role: state.role,
+        token: state.token,
+        isAuthenticated: state.isAuthenticated,
+      }),
+    },
+  ),
+)
+
+export default useAuthStore
+</file>
+
+<file path="store/networkStore.js">
+import { create } from 'zustand'
+
+const useNetworkStore = create((set) => ({
+  isOnline: navigator.onLine,
+  setOnlineStatus: (value) => set({ isOnline: value }),
+}))
+
+export default useNetworkStore
+</file>
+
+<file path="store/syncQueueStore.js">
+import { create } from 'zustand'
+import { getOfflineInspections } from '../api/services/inspectionsApi'
+
+const useSyncQueueStore = create((set) => ({
+  unsyncedCount: 0,
+  refreshUnsyncedCount: () => {
+    const queue = getOfflineInspections()
+    set({ unsyncedCount: queue.length })
+  },
+  setUnsyncedCount: (value) => set({ unsyncedCount: value }),
+}))
+
+export default useSyncQueueStore
+</file>
+
+</files>
