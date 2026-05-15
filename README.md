@@ -67,12 +67,8 @@
 - 
 Для наповнення бази данних запустіть команду
    ```bash
-   git clone https://github.com/zrumyk/BeeSmartApp.git
-   cd BeeSmartApp
+   docker exec -it beesmart_backend node seed.js
    ```
-виконується скрипт `seed.js`, який:
-1. Перевіряє наявність адміністратора за замовчуванням.
-2. Створює тестові локації та вулики, якщо база порожня.
 
 **Дані для входу (Default Admin):**
 - **Email:** `admin@admin.com`
