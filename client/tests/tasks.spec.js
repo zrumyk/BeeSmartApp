@@ -8,15 +8,19 @@ test.describe('Beekeeper Tasks', () => {
     });
   });
 
-  test('should show task list and completion button', async ({ page }) => {
+  test('should complete a task successfully', async ({ page }) => {
+    await page.route('**/api/vet-tasks/my-tasks', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        success: true, data: [{ _id: 't1', task_type: 'Лікування', hive_id: { qr_code: 'H-001' }, due_date: new Date() }]
+      })});
+    });
+
+    await page.route('**/api/vet-tasks/*/complete', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+    });
+
     await page.goto('/beekeeper/tasks');
-    await expect(page.locator('h1')).toContainText('Мої активні завдання');
-    
-    // Оскільки ми використовуємо фейковий токен, API може повернути 401 або пустий масив.
-    // Але ми перевіряємо наявність контейнера або повідомлення про порожній список.
-    const emptyMessage = page.locator('text=На сьогодні завдань немає');
-    const taskCards = page.locator('article');
-    
-    await expect(emptyMessage.or(taskCards).first()).toBeVisible();
+    await page.click('button:has-text("ВИКОНАНО")');
+    await expect(page.locator('text=На сьогодні завдань немає')).toBeVisible();
   });
 });
