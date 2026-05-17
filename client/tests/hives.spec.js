@@ -13,12 +13,9 @@ test.describe('Hives Management', () => {
     
     await expect(page.locator('h1')).toContainText('Hives Registry');
     
-    // Перевірка наявності пошукового поля
     const searchInput = page.locator('input[placeholder*="Search"]');
     await expect(searchInput).toBeVisible();
     
-    // Вводимо текст у пошук (тестуємо UI реакцію)
     await searchInput.fill('H-001');
-    // Тут можна додати перевірку на кількість рядків у таблиці, якщо є мок-дані
   });
 });
