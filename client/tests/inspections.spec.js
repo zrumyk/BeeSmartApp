@@ -12,6 +12,7 @@ test.describe('Admin Inspections', () => {
     await page.goto('/admin/inspections');
     await expect(page.locator('h1')).toContainText('Inspections Log');
     
+    // Очікуємо або повідомлення про відсутність даних, або список карток огляду
     const logContent = page.locator('text=No inspections found yet').or(page.locator('.rounded-2xl'));
     await expect(logContent.first()).toBeVisible();
   });
