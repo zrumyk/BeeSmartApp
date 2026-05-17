@@ -8,16 +8,22 @@ test.describe('Locations Management', () => {
     });
   });
 
-  test('should show locations page and create form', async ({ page }) => {
+  test('should create a new location successfully', async ({ page }) => {
+    await page.route('**/api/locations', async route => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) });
+      } else if (route.request().method() === 'POST') {
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, data: { name: 'South Garden' } }) });
+      }
+    });
+
     await page.goto('/admin/locations');
-    await expect(page.locator('h1')).toContainText('Locations & Apiaries');
+    await page.fill('input[placeholder="Main Field"]', 'South Garden');
+    await page.fill('input[placeholder="Kyiv region"]', 'Kyiv');
+    await page.fill('input[placeholder="50.4501"]', '50.123');
+    await page.fill('input[placeholder="30.5234"]', '30.456');
     
-    // Перевірка полів форми
-    await expect(page.locator('input[placeholder="Main Field"]')).toBeVisible();
-    await expect(page.locator('input[placeholder="50.4501"]')).toBeVisible();
-    
-    // Перевірка кнопки створення
-    const submitBtn = page.locator('button', { hasText: 'Confirm Location' });
-    await expect(submitBtn).toBeVisible();
+    await page.click('button:has-text("Confirm Location")');
+    await expect(page.locator('input[placeholder="Main Field"]')).toHaveValue('');
   });
 });
